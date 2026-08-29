@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Exame de Consciência católico — instrumento privado e offline para preparação à Confissão.">
+<meta name="theme-color" content="#1c1e26">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+<title>Exame de Consciência</title>
+</head>
+<body>
+<a href="#main" class="skip-link">Pular para o conteúdo</a>
+
+<header class="site-header" role="banner">
+  <div class="header-inner">
+    <div class="brand" aria-label="Exame de Consciência">
+      <span class="brand-cross" aria-hidden="true">✠</span>
+      <span class="brand-text">Exame de Consciência</span>
+    </div>
+    <div class="header-actions">
+      <button type="button" id="btn-theme" class="btn-icon" aria-label="Alternar tema claro e escuro" title="Alternar tema">◐</button>
+      <button type="button" id="btn-help" class="btn-icon" aria-label="Sobre e privacidade" title="Sobre">?</button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="main" tabindex="-1">
+
+  <!-- HOME -->
+  <section id="view-home" class="view" aria-labelledby="home-title">
+    <div class="home-hero">
+      <p class="home-kicker">Ad majorem Dei gloriam</p>
+      <h1 id="home-title" class="home-title">Exame de<br>Consciência</h1>
+      <p class="home-subtitle">Um lugar silencioso e privado para<br>preparar-se diante de Deus para a Confissão.</p>
+      <div class="home-divider" aria-hidden="true"></div>
+      <p class="home-privacy-note">Nenhum dado sai deste dispositivo. Sem conta, sem servidor, sem rastreamento.<br>Funciona completamente offline.</p>
+    </div>
+
+    <nav class="home-actions" aria-label="Escolha o tipo de exame">
+      <button type="button" class="btn-primary" id="btn-start-completo">Exame completo</button>
+      <p class="btn-hint">Preparação serena e completa para a Confissão</p>
+
+      <button type="button" class="btn-secondary" id="btn-start-rapido">Exame rápido</button>
+      <p class="btn-hint">Revisão breve — poucos minutos</p>
+
+      <button type="button" class="btn-secondary" id="btn-start-diario">Exame diário</button>
+      <p class="btn-hint">Revisão do dia diante de Deus</p>
+
+      <div id="home-continue-wrap" class="home-continue-wrap hidden">
+        <div class="continue-card" role="status" aria-live="polite">
+          <p class="continue-text">Você estava fazendo um exame.<br>Deseja continuar de onde parou?</p>
+          <div class="continue-actions">
+            <button type="button" class="btn-primary btn-small" id="btn-continue">Continuar</button>
+            <button type="button" class="btn-ghost btn-small" id="btn-restart-home">Começar novamente</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="home-secondary-links">
+        <button type="button" class="btn-ghost" id="btn-oracoes-home">Orações</button>
+        <button type="button" class="btn-ghost" id="btn-sobre-home">Sobre este aplicativo</button>
+      </div>
+    </nav>
+
+    <blockquote class="home-quote">
+      <p>“Reserve alguns minutos de silêncio. Coloque-se na presença de Deus e peça a graça de reconhecer sinceramente seus pecados, arrepender-se deles e desejar a conversão.<br><br>Examine sua vida com honestidade, mas sem desespero. O objetivo deste exame não é condená-lo, mas ajudá-lo a reconhecer onde precisa voltar-se para Deus.”</p>
+    </blockquote>
+  </section>
+
+  <!-- INTRODUÇÃO -->
+  <section id="view-intro" class="view hidden" aria-labelledby="intro-title" hidden>
+    <div class="intro-card">
+      <p class="intro-kicker" id="intro-kicker">Antes de começar</p>
+      <h2 id="intro-title" class="intro-title">Preparação</h2>
+      <div class="prose">
+        <p>Reserve alguns minutos de silêncio. Se puder, faça o sinal da cruz.</p>
+        <p>Coloque-se na presença de Deus. Peça ao Espírito Santo a graça de ver sua vida com verdade, com humildade e com confiança na misericórdia divina.</p>
+        <p>Este exame apresenta <em>perguntas para reflexão</em>, não acusações. Nenhuma marcação decide por si só se houve pecado mortal ou venial — isso depende de <strong>matéria grave, pleno conhecimento e consentimento deliberado</strong>, e deve ser discernido com o sacerdote no confessionário.</p>
+        <p>Não se apresse. Leia cada pergunta com calma. Se algo tocar sua consciência, reserve-o para levar à Confissão. Se houver dúvida importante, anote-a para perguntar ao confessor.</p>
+        <p class="intro-warn">Evite escrúpulo: este exame não pretende listar cada falta possível, nem dizer “quanto pior você está”. Ele existe apenas para ajudá-lo a lembrar, com serenidade, o que precisa ser reconciliado.</p>
+        <p>Lembre-se: Deus deseja seu arrependimento e sua alegria, não seu desespero.</p>
+      </div>
+      <div class="intro-actions">
+        <button type="button" class="btn-primary" id="btn-intro-begin">Começar o exame</button>
+        <button type="button" class="btn-ghost" id="btn-intro-back">Voltar</button>
+      </div>
+      <p class="intro-privacy">Tudo o que você marcar ou escrever permanece apenas neste dispositivo e pode ser apagado a qualquer momento.</p>
+    </div>
+  </section>
+
+  <!-- EXAME -->
+  <section id="view-exam" class="view hidden" aria-labelledby="exam-section-title" hidden>
+    <nav class="exam-topbar" aria-label="Progresso do exame">
+      <button type="button" class="btn-ghost btn-small" id="btn-exam-home" aria-label="Voltar ao início">← Início</button>
+      <span class="exam-progress" id="exam-progress" aria-live="polite"></span>
+      <button type="button" class="btn-ghost btn-small" id="btn-exam-sections" aria-label="Ver todas as seções" aria-expanded="false" aria-controls="sections-drawer">Seções</button>
+    </nav>
+
+    <div id="sections-drawer" class="sections-drawer hidden" hidden>
+      <h3 class="drawer-title">Seções</h3>
+      <ol id="sections-list" class="sections-list"></ol>
+      <div class="drawer-actions">
+        <button type="button" class="btn-ghost btn-small" id="btn-close-drawer">Fechar</button>
+      </div>
+    </div>
+
+    <div class="exam-header">
+      <p class="exam-kicker" id="exam-kicker"></p>
+      <h2 id="exam-section-title" class="exam-title"></h2>
+      <p id="exam-section-desc" class="exam-desc"></p>
+    </div>
+
+    <div id="exam-questions" class="exam-questions" role="group" aria-labelledby="exam-section-title"></div>
+
+    <div class="exam-nav">
+      <button type="button" class="btn-ghost" id="btn-prev">← Anterior</button>
+      <button type="button" class="btn-primary" id="btn-next">Próxima →</button>
+    </div>
+
+    <div class="exam-footer-actions">
+      <label class="toggle-row" for="toggle-notes">
+        <input type="checkbox" id="toggle-notes">
+        <span>Permitir anotações privadas <small>(desativado por padrão — fica só neste dispositivo)</small></span>
+      </label>
+      <button type="button" class="btn-ghost btn-small btn-danger" id="btn-clear-exam">Apagar marcações deste exame</button>
+    </div>
+  </section>
+
+  <!-- CONCLUSÃO / PREPARAÇÃO PARA CONFISSÃO -->
+  <section id="view-conclusion" class="view hidden" aria-labelledby="conclusion-title" hidden>
+    <div class="conclusion-card">
+      <p class="intro-kicker">Conclusão</p>
+      <h2 id="conclusion-title" class="intro-title">Preparação para a Confissão</h2>
+      <div class="prose">
+        <p>Obrigado por dedicar este tempo diante de Deus. Reserve agora um momento para:</p>
+        <ul>
+          <li>Arrepender-se sinceramente dos pecados reconhecidos;</li>
+          <li>Fazer propósito de emenda — desejar concretamente evitar o pecado;</li>
+          <li>Confessar os pecados ao sacerdote com humildade e inteireza, sem esconder deliberadamente matéria grave;</li>
+          <li>Cumprir com generosidade a penitência que for dada.</li>
+        </ul>
+        <p>Se durante o exame você marcou alguns itens para lembrar, use-os apenas como <strong>auxílio pessoal de memória</strong>. O aplicativo não gera uma “lista oficial de pecados”, não classifica gravidade e não substitui o confessor.</p>
+        <p>Se restar dúvida sobre a gravidade de algum ato, leve-a ao sacerdote com simplicidade.</p>
+      </div>
+
+      <div id="conclusion-marked" class="conclusion-marked hidden" hidden>
+        <h3 class="marked-title">Itens que você marcou para levar à Confissão</h3>
+        <p class="marked-hint">Esta lista existe apenas neste dispositivo para ajudá-lo a lembrar. Ela não é enviada a lugar nenhum.</p>
+        <ul id="conclusion-list" class="marked-list"></ul>
+        <div class="marked-actions">
+          <button type="button" class="btn-ghost btn-small" id="btn-print-marked">Imprimir / salvar como PDF</button>
+          <button type="button" class="btn-ghost btn-small btn-danger" id="btn-clear-marked-conclusion">Apagar marcações</button>
+        </div>
+      </div>
+
+      <div class="conclusion-actions">
+        <button type="button" class="btn-primary" id="btn-to-prayers">Rezar o Ato de Contrição</button>
+        <button type="button" class="btn-ghost" id="btn-back-home">Voltar ao início</button>
+        <button type="button" class="btn-ghost btn-danger" id="btn-wipe-all">Apagar todos os meus dados</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ORAÇÕES -->
+  <section id="view-prayers" class="view hidden" aria-labelledby="prayers-title" hidden>
+    <div class="prayers-header">
+      <button type="button" class="btn-ghost btn-small" id="btn-prayers-back">← Voltar</button>
+      <h2 id="prayers-title" class="intro-title">Orações</h2>
+      <p class="exam-desc">Orações diretamente ligadas à preparação para a Confissão. Toque para alternar o idioma.</p>
+    </div>
+
+    <div class="prayer-tabs" role="tablist" aria-label="Idioma das orações">
+      <button type="button" role="tab" aria-selected="true" class="tab active" data-lang="pt">Português</button>
+      <button type="button" role="tab" aria-selected="false" class="tab" data-lang="la">Latim</button>
+    </div>
+
+    <article class="prayer-card" aria-labelledby="prayer-contricao-title">
+      <h3 id="prayer-contricao-title" class="prayer-title">Ato de Contrição</h3>
+      <div class="prayer-body" data-prayer="contricao"></div>
+    </article>
+
+    <article class="prayer-card" aria-labelledby="prayer-espirito-title">
+      <h3 id="prayer-espirito-title" class="prayer-title">Vinde, Espírito Santo</h3>
+      <div class="prayer-body" data-prayer="espirito"></div>
+    </article>
+
+    <article class="prayer-card" aria-labelledby="prayer-confiteor-title">
+      <h3 id="prayer-confiteor-title" class="prayer-title">Confiteor — Confesso a Deus</h3>
+      <div class="prayer-body" data-prayer="confiteor"></div>
+    </article>
+
+    <p class="prayer-note">Estas orações estão incluídas apenas como auxílio à preparação e ao arrependimento. Reze com calma, sem pressa.</p>
+  </section>
+
+  <!-- SOBRE -->
+  <section id="view-about" class="view hidden" aria-labelledby="about-title" hidden>
+    <div class="intro-card">
+      <button type="button" class="btn-ghost btn-small" id="btn-about-back">← Voltar</button>
+      <h2 id="about-title" class="intro-title">Sobre este aplicativo</h2>
+      <div class="prose">
+        <p><strong>Propósito:</strong> oferecer um exame de consciência católico sério, sóbrio e completo para preparação à Confissão e para a oração pessoal.</p>
+        <h3>Privacidade</h3>
+        <ul>
+          <li>Não possui backend, conta, login ou cadastro.</li>
+          <li>Não utiliza analytics, cookies de rastreamento, publicidade ou serviços de terceiros.</li>
+          <li>Não envia o que você marca ou escreve para a internet — nenhum dado sai do dispositivo.</li>
+          <li>Funciona completamente offline após o primeiro carregamento.</li>
+          <li>Não carrega fontes, scripts ou recursos externos.</li>
+          <li>Anotações são opcionais, desativadas por padrão e armazenadas apenas localmente.</li>
+        </ul>
+        <h3>Armazenamento local</h3>
+        <p>Por padrão o aplicativo <em>não salva respostas pessoais</em>. Ele pode guardar localmente apenas preferências não sensíveis (tema, idioma de oração, última posição) e, se você ativar, marcações e anotações — sempre apenas neste dispositivo.</p>
+        <h3>Limitações</h3>
+        <p>Este aplicativo não substitui o sacerdote nem o discernimento pastoral. Em caso de dúvida sobre pecado grave, escrúpulo ou situação moral complexa, procure seu confessor.</p>
+        <h3>Tecnologias</h3>
+        <p>HTML5, CSS3, JavaScript vanilla, LocalStorage (mínimo necessário), PWA com Service Worker e Manifest. Sem frameworks, sem CDNs, sem APIs externas.</p>
+      </div>
+      <div class="about-actions">
+        <button type="button" class="btn-ghost btn-danger" id="btn-wipe-all-about">Apagar todos os meus dados</button>
+      </div>
+      <p class="about-version">Versão local — sem coleta de dados.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer" role="contentinfo">
+  <p>Feito para oração. Sem rastreamento. Sem conta. Offline.</p>
+  <p><button type="button" class="link-btn" id="btn-footer-about">Privacidade e sobre</button> · <button type="button" class="link-btn" id="btn-footer-wipe">Apagar todos os meus dados</button></p>
+</footer>
+
+<!-- Modal confirmação -->
+<div id="modal" class="modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-card">
+    <h3 id="modal-title" class="modal-title"></h3>
+    <p id="modal-body" class="modal-body"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="modal-cancel">Cancelar</button>
+      <button type="button" class="btn-primary btn-danger" id="modal-confirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/content.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

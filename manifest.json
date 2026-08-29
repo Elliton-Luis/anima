@@ -1,0 +1,24 @@
+{
+  "name": "Exame de Consciência",
+  "short_name": "Exame",
+  "description": "Exame de Consciência católico — privado, offline, sem rastreamento.",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#faf8f5",
+  "theme_color": "#1c1e26",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
