@@ -623,7 +623,32 @@
         showView("home");
       });
     });
-    $("#btn-print-marked").addEventListener("click", ()=> window.print());
+    function updatePrintHeader(){
+      const el = $("#print-header");
+      if(!el) return;
+      const d = new Date();
+      const fmt = d.toLocaleDateString("pt-BR", {day:"2-digit", month:"long", year:"numeric"});
+      el.textContent = fmt + " — confidencial · apenas para a confissão";
+      el.style.display = "block";
+      const foot = $("#print-footer");
+      if(foot) foot.style.display = "block";
+    }
+    $("#btn-print-marked").addEventListener("click", ()=>{
+      updatePrintHeader();
+      // garante que a view de conclusão está visível para impressão
+      setTimeout(()=> window.print(), 50);
+    });
+    // after print, hide again (screen)
+    window.addEventListener("afterprint", ()=>{
+      const h = $("#print-header"); if(h) h.style.display="none";
+      const f = $("#print-footer"); if(f) f.style.display="none";
+    });
+    $("#btn-finish-from-prayers")?.addEventListener("click", ()=>{
+      openModal("Finalizar exame?", "O progresso será limpo e você voltará ao início. Use 'Imprimir' na tela anterior se precisar do PDF para a confissão.", "Finalizar", async ()=>{
+        closeModal();
+        await finishExamAndHome();
+      });
+    });
 
     const wipeHandler = ()=>{
       openModal("Apagar todos os meus dados?", "Isso removerá permanentemente todas as marcações, anotações, progresso e cache offline deste dispositivo, INCLUINDO o PIN. Esta ação não pode ser desfeita. Cache do Service Worker também será limpo (verificado via caches.keys()).", "Apagar tudo", async ()=>{

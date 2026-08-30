@@ -155,7 +155,9 @@
       <div id="conclusion-marked" class="conclusion-marked hidden" hidden>
         <h3 class="marked-title">Itens que você marcou para levar à Confissão</h3>
         <p class="marked-hint">Esta lista existe apenas neste dispositivo para ajudá-lo a lembrar. Ela não é enviada a lugar nenhum.</p>
+        <div id="print-header" class="print-header" style="display:none" aria-hidden="true"></div>
         <ul id="conclusion-list" class="marked-list"></ul>
+        <div id="print-footer" class="print-footer" style="display:none" aria-hidden="true">Leve apenas o necessário ao confessor. Seja breve, claro e sem detalhes desnecessários.</div>
         <div class="marked-actions">
           <button type="button" class="btn-ghost btn-small" id="btn-print-marked">Imprimir / salvar como PDF</button>
           <button type="button" class="btn-ghost btn-small btn-danger" id="btn-clear-marked-conclusion">Apagar marcações</button>
@@ -200,6 +202,10 @@
     </article>
 
     <p class="prayer-note">Estas orações estão incluídas apenas como auxílio à preparação e ao arrependimento. Reze com calma, sem pressa.</p>
+    <div class="prayer-finish-actions" style="margin-top:22px; display:flex; flex-direction:column; align-items:center; gap:8px">
+      <button type="button" class="btn-primary" id="btn-finish-from-prayers">✓ Finalizar exame</button>
+      <p class="btn-hint" style="margin:0">Encerra o progresso e volta ao início</p>
+    </div>
   </section>
 
   <!-- SOBRE -->

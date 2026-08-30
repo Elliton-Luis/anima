@@ -375,12 +375,35 @@ a{color:var(--accent)}
 
 .hidden{display:none !important}
 
-/* print: hide chrome when printing marked list */
+/* print: PDF para confissao — so pecados, simples e legivel */
 @media print{
-  .site-header, .site-footer, .exam-topbar, .exam-nav, .exam-footer-actions, .home-actions, .intro-actions, .conclusion-actions, .marked-actions, .prayer-tabs{display:none !important}
-  body{background:#fff; color:#000}
-  .main{max-width:none; padding:0}
-  .q-card, .intro-card, .conclusion-card, .prayer-card{box-shadow:none; border:1px solid #ddd}
+  @page{ margin:16mm 13mm; size:A4 }
+  html, body{background:#fff !important; color:#000 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .site-header, .site-footer, .exam-topbar, .exam-nav, .exam-footer-actions, .home-actions, .intro-actions, .conclusion-actions, .marked-actions, .prayer-tabs, .quick-exit, .privacy-overlay, .modal, #pin-disable-modal, .pin-card, .prayer-finish-actions{display:none !important}
+  .main{max-width:none !important; padding:0 !important; margin:0 !important}
+  .view{display:none !important}
+  #view-conclusion{display:block !important}
+  #view-conclusion .conclusion-card{box-shadow:none !important; border:none !important; padding:0 !important; background:#fff !important}
+  #view-conclusion .prose, #view-conclusion .intro-kicker, #conclusion-title, .home-quote{display:none !important}
+  #conclusion-marked{display:block !important; margin:0 !important}
+  #conclusion-marked::before{
+    content:"Exame de Consciência — Para a Confissão";
+    display:block; font-family:system-ui, sans-serif; font-size:16px; font-weight:700; text-align:center; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; color:#000;
+  }
+  #print-header{display:block !important; text-align:center; font-family:system-ui, sans-serif; font-size:10px; color:#555; margin-bottom:12px; border-bottom:1px solid #000; padding-bottom:8px}
+  .marked-title{font-size:11px !important; text-align:center; letter-spacing:.12em; margin-bottom:10px !important; color:#000 !important}
+  .marked-hint{display:none !important}
+  .marked-list{ gap:7px !important}
+  .marked-list li{
+    background:#fff !important; border:1px solid #bbb !important; border-radius:6px !important;
+    padding:7px 10px 7px 28px !important; font-size:12.5px !important; line-height:1.45 !important;
+    position:relative; break-inside:avoid; color:#000 !important;
+  }
+  .marked-list li::before{
+    content:"☐"; position:absolute; left:9px; top:8px; font-size:13px; line-height:1;
+  }
+  .marked-list li span:first-child{font-size:9px !important; letter-spacing:.10em !important; text-transform:uppercase; color:#555 !important; margin-bottom:3px !important}
+  .print-footer{display:block !important; text-align:center; font-family:system-ui, sans-serif; font-size:9px; color:#666; margin-top:14px; border-top:1px solid #ccc; padding-top:8px; font-style:italic}
 }
 
 /* large screens: slightly wider, but keep reading width */
