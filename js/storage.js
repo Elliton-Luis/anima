@@ -24,6 +24,25 @@ const Storage = (() => {
   let _lockoutUntil = 0;
   let _saveQueue = Promise.resolve();
 
+  const safe = {
+    get(key){
+      try { return localStorage.getItem(PREFIX+key); } catch { return null; }
+    },
+    set(key, val){
+      try { localStorage.setItem(PREFIX+key, val); return true; } catch(e) {
+        if(e && (e.name === "QuotaExceededError" || e.code === 22)){
+          const q = new Error("QuotaExceededError");
+          q.name = "QuotaExceededError";
+          throw q;
+        }
+        return false;
+      }
+    },
+    remove(key){
+      try { localStorage.removeItem(PREFIX+key); } catch {}
+    }
+  };
+
   // persiste rate-limit para sobreviver a reload (evita bypass por F5)
   function loadFailState(){
     try{
@@ -43,25 +62,6 @@ const Storage = (() => {
     try{ safe.set(FAIL_KEY, JSON.stringify({c:_failedAttempts, u:_lockoutUntil})); }catch{}
   }
   loadFailState();
-
-  const safe = {
-    get(key){
-      try { return localStorage.getItem(PREFIX+key); } catch { return null; }
-    },
-    set(key, val){
-      try { localStorage.setItem(PREFIX+key, val); return true; } catch(e) {
-        if(e && (e.name === "QuotaExceededError" || e.code === 22)){
-          const q = new Error("QuotaExceededError");
-          q.name = "QuotaExceededError";
-          throw q;
-        }
-        return false;
-      }
-    },
-    remove(key){
-      try { localStorage.removeItem(PREFIX+key); } catch {}
-    }
-  };
 
   function bufToB64(buf){
     const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -231,11 +231,19 @@ const Storage = (() => {
     for(const id of ids){
       const raw = safe.get("state:"+id);
       if(!raw) continue;
+      const looksLikeLegacyCipher = !raw.trim().startsWith("{") && raw.includes(".");
+      if(looksLikeLegacyCipher){
+        try{
+          const dec = await decryptString(raw, key);
+          const obj = JSON.parse(dec);
+          safe.set("state:"+id, JSON.stringify({v:1, data: obj}));
+        }catch{}
+        continue;
+      }
       try{
         const outer = JSON.parse(raw);
         if(outer && outer.v === 2 && typeof outer.data === "string"){
           const dec = await decryptString(outer.data, key);
-          // dec é JSON string do estado
           const obj = JSON.parse(dec);
           safe.set("state:"+id, JSON.stringify({v:1, data: obj}));
           continue;
@@ -244,16 +252,7 @@ const Storage = (() => {
           continue;
         }
         if(outer && outer.marks !== undefined){
-          // já texto puro legado
           continue;
-        }
-        // legado "iv.cipher" sem envelope
-        if(typeof raw === "string" && raw.includes(".")){
-          try{
-            const dec = await decryptString(raw, key);
-            const obj = JSON.parse(dec);
-            safe.set("state:"+id, JSON.stringify({v:1, data: obj}));
-          }catch{}
         }
       }catch{}
     }
@@ -274,6 +273,11 @@ const Storage = (() => {
     for(const id of ids){
       const raw = safe.get("state:"+id);
       if(!raw) continue;
+      const looksLikeLegacyCipher = !raw.trim().startsWith("{") && raw.includes(".");
+      if(looksLikeLegacyCipher){
+        try{ plains[id]=await decryptString(raw, oldKey); }catch{ plains[id]=raw; }
+        continue;
+      }
       try{
         const outer = JSON.parse(raw);
         if(outer && outer.v === 2 && typeof outer.data === "string"){
@@ -286,10 +290,6 @@ const Storage = (() => {
         }
         if(outer && outer.marks !== undefined){
           plains[id]=JSON.stringify(outer);
-          continue;
-        }
-        if(typeof raw === "string" && raw.includes(".")){
-          plains[id]=await decryptString(raw, oldKey);
           continue;
         }
       }catch{ plains[id]=raw; }
