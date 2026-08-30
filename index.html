@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Exame de Consciência católico — instrumento privado e offline para preparação à Confissão.">
 <meta name="theme-color" content="#1c1e26">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'; worker-src 'self'; upgrade-insecure-requests">
+<meta http-equiv="Permissions-Policy" content="geolocation=(), camera=(), microphone=(), payment=(), usb=(), magnetometer=(), gyroscope=()">
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
@@ -128,6 +130,7 @@
         <span>Permitir anotações privadas <small>(desativado por padrão — fica só neste dispositivo)</small></span>
       </label>
       <p id="notes-pin-hint" class="pin-hint" aria-live="polite">Suas notas não estão protegidas por senha neste dispositivo.</p>
+      <button type="button" class="btn-primary btn-small hidden" id="btn-finish-exam" hidden>✓ Finalizar exame</button>
       <button type="button" class="btn-ghost btn-small btn-danger" id="btn-clear-exam">Apagar marcações deste exame</button>
     </div>
   </section>
@@ -160,7 +163,8 @@
       </div>
 
       <div class="conclusion-actions">
-        <button type="button" class="btn-primary" id="btn-to-prayers">Rezar o Ato de Contrição</button>
+        <button type="button" class="btn-primary" id="btn-finish-exam-conclusion">✓ Finalizar exame</button>
+        <button type="button" class="btn-ghost" id="btn-to-prayers">Rezar o Ato de Contrição</button>
         <button type="button" class="btn-ghost" id="btn-back-home">Voltar ao início</button>
         <button type="button" class="btn-ghost btn-danger" id="btn-wipe-all">Apagar todos os meus dados</button>
       </div>
@@ -237,7 +241,7 @@
         </div>
         <div id="pin-unlock" class="pin-unlock hidden" hidden>
           <label for="pin-unlock-input" class="pin-label">Desbloquear</label>
-          <input type="password" id="pin-unlock-input" class="pin-input" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Digite seu PIN">
+          <input type="password" id="pin-unlock-input" class="pin-input" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Digite seu PIN">
           <div class="pin-actions">
             <button type="button" class="btn-primary btn-small" id="btn-unlock-pin">Desbloquear</button>
             <button type="button" class="btn-ghost btn-small" id="btn-lock-pin">Bloquear</button>
@@ -276,6 +280,21 @@
 <div id="quick-exit-view" class="quick-exit-view hidden" hidden aria-hidden="true">
   <p>Exame de Consciência — tela neutra</p>
   <button type="button" class="btn-ghost" id="btn-quick-exit-back">Voltar ao início</button>
+</div>
+
+<!-- Modal desativar PIN (substitui prompt) -->
+<div id="pin-disable-modal" class="modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="pin-disable-title">
+  <div class="modal-card">
+    <h3 id="pin-disable-title" class="modal-title">Desativar proteção?</h3>
+    <p class="modal-body">Digite seu PIN atual para descriptografar e remover a proteção. Se esquecer o PIN, será preciso apagar os dados.</p>
+    <label for="pin-disable-input" class="pin-label">PIN atual</label>
+    <input type="password" id="pin-disable-input" class="pin-input" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="PIN atual (≥6)">
+    <p id="pin-disable-error" class="pin-warn hidden" hidden aria-live="polite"></p>
+    <div class="modal-actions" style="margin-top:12px">
+      <button type="button" class="btn-ghost" id="pin-disable-cancel">Cancelar</button>
+      <button type="button" class="btn-primary btn-danger" id="pin-disable-confirm">Desativar</button>
+    </div>
+  </div>
 </div>
 
 <!-- Modal confirmação -->

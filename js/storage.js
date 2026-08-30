@@ -18,12 +18,31 @@ const Storage = (() => {
   const PIN_CHECK_PLAINTEXT = "anima-pin-check";
   const PBKDF2_ITERATIONS = 600000; // OWASP ≥600k para PBKDF2-HMAC-SHA256
   const PIN_MIN_LEN = 6;
+  const FAIL_KEY = "pinFail";
   let _cryptoKey = null;
-  // rate-limit para brute-force offline mitigado parcialmente (sem persistência)
   let _failedAttempts = 0;
   let _lockoutUntil = 0;
-  // fila para evitar concorrência de saveState
   let _saveQueue = Promise.resolve();
+
+  // persiste rate-limit para sobreviver a reload (evita bypass por F5)
+  function loadFailState(){
+    try{
+      const raw = safe.get(FAIL_KEY);
+      if(raw){
+        const j = JSON.parse(raw);
+        _failedAttempts = j.c || 0;
+        _lockoutUntil = j.u || 0;
+        if(_lockoutUntil && Date.now() > _lockoutUntil){
+          _failedAttempts = 0; _lockoutUntil = 0;
+          saveFailState();
+        }
+      }
+    }catch{}
+  }
+  function saveFailState(){
+    try{ safe.set(FAIL_KEY, JSON.stringify({c:_failedAttempts, u:_lockoutUntil})); }catch{}
+  }
+  loadFailState();
 
   const safe = {
     get(key){
@@ -110,13 +129,15 @@ const Storage = (() => {
   function registerFailedAttempt(){
     _failedAttempts++;
     if(_failedAttempts >= 5){
-      _lockoutUntil = Date.now() + 30000; // 30s
+      _lockoutUntil = Date.now() + 30000;
       _failedAttempts = 0;
     }
+    saveFailState();
   }
   function resetAttempts(){
     _failedAttempts = 0;
     _lockoutUntil = 0;
+    saveFailState();
   }
   async function verifyPin(pin){
     if(isLockedOut()) return false;
@@ -409,7 +430,8 @@ const Storage = (() => {
       keys.forEach(k=>{ try{localStorage.removeItem(k);}catch{} });
     }catch{}
     _cryptoKey=null;
-    resetAttempts();
+    _failedAttempts=0; _lockoutUntil=0;
+    try{ localStorage.removeItem(PREFIX+FAIL_KEY); }catch{}
   }
   // alias compatíveis (deprecados)
   const clearAll = resetContentOnly;
@@ -424,5 +446,5 @@ const Storage = (() => {
     }catch{}
   }
 
-  return {getPrefs, savePrefs, getProgress, saveProgress, clearProgress, notesEnabled, setNotesEnabled, getStateAsync, saveState, clearState, clearAllStates, clearAll, resetContentOnly, wipeEverything, resetEverythingIncludingPin, wipeEverythingWithCaches, PREFIX, isPinEnabled, isUnlocked, verifyPin, unlockPin, lockPin, enablePin, disablePin, changePin, listExamIds, isLockedOut, PBKDF2_ITERATIONS, PIN_MIN_LEN, _cryptoKey: ()=>_cryptoKey};
+  return {getPrefs, savePrefs, getProgress, saveProgress, clearProgress, notesEnabled, setNotesEnabled, getStateAsync, saveState, clearState, clearAllStates, clearAll, resetContentOnly, wipeEverything, resetEverythingIncludingPin, wipeEverythingWithCaches, PREFIX, isPinEnabled, isUnlocked, verifyPin, unlockPin, lockPin, enablePin, disablePin, changePin, listExamIds, isLockedOut, PBKDF2_ITERATIONS, PIN_MIN_LEN};
 })();

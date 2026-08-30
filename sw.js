@@ -43,10 +43,10 @@ self.addEventListener("fetch", (event) => {
     caches.match(req).then((cached) => {
       if (cached) return cached;
       return fetch(req).then((res) => {
-        // Cachear apenas assets da lista (navegação offline)
-        // Não colocar respostas opacas ou com dados do usuário em cache
-        const shouldCache = ASSETS.some((a) => url.pathname.endsWith(a.replace("./","")) || url.pathname.endsWith("index.html") || url.pathname === "/" || url.pathname.endsWith("/"));
-        // Simplificar: cacheia apenas se for um dos assets conhecidos
+        // Cachear APENAS assets da lista — comparação exata por pathname (corrige bug onde "./" -> "" fazia endsWith("") sempre true)
+        const assetPaths = ASSETS.map(a => new URL(a, location.origin).pathname);
+        const reqPath = url.pathname;
+        const shouldCache = assetPaths.includes(reqPath) || (reqPath === "/index.html" && assetPaths.includes("/")) || (reqPath === "/" && assetPaths.includes("/index.html"));
         if (shouldCache && res.ok) {
           const clone = res.clone();
           caches.open(CACHE).then((c) => c.put(req, clone));

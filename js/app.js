@@ -288,6 +288,12 @@
     $("#btn-prev").style.opacity = currentSection===0 ? ".4" : "1";
     const isLast = currentSection===exam.sections.length-1;
     $("#btn-next").textContent = isLast ? "Concluir →" : "Próxima →";
+    const btnFinish = $("#btn-finish-exam");
+    if(btnFinish){
+      const showFinish = isLast;
+      btnFinish.classList.toggle("hidden", !showFinish);
+      btnFinish.hidden = !showFinish;
+    }
     $("#toggle-notes").checked = notesEnabled;
     updatePinHint();
     safeSaveProgress(currentExamId, currentSection);
@@ -442,6 +448,33 @@
     currentSection = 0;
     renderExam();
   }
+  async function finishExam(){
+    // Finaliza exame: limpa progresso (remove "continuar") mas mantém marks/notes até wipe explícito
+    Storage.clearProgress();
+    updateHomeContinue();
+    if(currentExamId && views.exam && !views.exam.classList.contains("hidden")){
+      await showConclusion();
+      showStorageError("Exame finalizado. Suas marcações permanecem até você apagar.");
+    } else if(currentExamId){
+      await loadExamState(currentExamId);
+      showView("conclusion");
+      // garante dados da conclusão visíveis mesmo sem voltar ao exame
+      const st = getCachedState(currentExamId);
+      if(!st._locked) await showConclusion();
+      Storage.clearProgress();
+      updateHomeContinue();
+    } else {
+      showView("home");
+    }
+  }
+
+  async function finishExamAndHome(){
+    Storage.clearProgress();
+    updateHomeContinue();
+    showView("home");
+    showStorageError("Exame finalizado. Suas marcações permanecem até você usar 'Apagar todos os meus dados'.");
+  }
+
   async function wipeAll(){
     if(Storage.wipeEverythingWithCaches) await Storage.wipeEverythingWithCaches();
     else if(Storage.resetEverythingIncludingPin) await Storage.resetEverythingIncludingPin();
@@ -483,6 +516,15 @@
   }
 
   function triggerQuickExit(){
+    // saida rapida deve tambem limpar memoria sensivel
+    if(Storage.isUnlocked()){
+      Storage.lockPin();
+      cachedStates = {};
+      updatePinUI();
+    }
+    // borra inputs visiveis e tira foco
+    $$("textarea.q-note").forEach(t=>{ t.blur(); });
+    document.activeElement?.blur();
     const qv = $("#quick-exit-view");
     qv.classList.remove("hidden");
     qv.hidden = false;
@@ -555,6 +597,18 @@
       renderExam();
     });
 
+    $("#btn-finish-exam")?.addEventListener("click", ()=>{
+      openModal("Finalizar exame?", "O progresso 'continuar de onde parou' será limpo. Suas marcações permanecem até você apagar. Deseja finalizar?", "Finalizar", async ()=>{
+        closeModal();
+        await finishExam();
+      });
+    });
+    $("#btn-finish-exam-conclusion")?.addEventListener("click", ()=>{
+      openModal("Finalizar exame?", "Isso limpa o progresso e volta ao início. Suas marcações marcadas como 'Levar à Confissão' permanecem até você apagar.", "Finalizar", async ()=>{
+        closeModal();
+        await finishExamAndHome();
+      });
+    });
     $("#btn-clear-exam").addEventListener("click", ()=>{
       openModal("Apagar marcações deste exame?", "Todas as marcações e anotações deste exame serão apagadas apenas neste dispositivo.", "Apagar", ()=>{
         wipeCurrentExam();
@@ -630,19 +684,44 @@
       Storage.lockPin(); cachedStates={}; updatePinUI(); if(currentExamId) renderExam();
       clearTimeout(autoLockTimer); clearTimeout(inactivityTimer);
     });
-    $("#btn-disable-pin")?.addEventListener("click", ()=>{
-      openModal("Desativar proteção?", "Digite seu PIN atual para descriptografar e remover a proteção. Se esquecer o PIN, será preciso apagar os dados.", "Desativar", async ()=>{
-        const pin = prompt("Digite seu PIN atual:");
-        if(pin===null){ closeModal(); return; }
-        if(pin.trim().length < pinMin){ closeModal(); openModal("PIN inválido","Mínimo "+pinMin+" caracteres.","OK", closeModal); return; }
-        const ok = await Storage.disablePin(pin.trim());
-        if(!ok){ closeModal(); openModal("PIN incorreto","Não foi possível desativar.","OK", closeModal); return; }
-        cachedStates={};
-        if(currentExamId) await loadExamState(currentExamId);
-        closeModal();
+    function openPinDisableModal(){
+      const m = $("#pin-disable-modal");
+      $("#pin-disable-input").value = "";
+      $("#pin-disable-error").textContent = "";
+      $("#pin-disable-error").classList.add("hidden"); $("#pin-disable-error").hidden = true;
+      m.classList.remove("hidden"); m.hidden = false;
+      setTimeout(()=> $("#pin-disable-input").focus(), 50);
+    }
+    function closePinDisableModal(){
+      const m = $("#pin-disable-modal");
+      m.classList.add("hidden"); m.hidden = true;
+    }
+    $("#btn-disable-pin")?.addEventListener("click", openPinDisableModal);
+    $("#pin-disable-cancel")?.addEventListener("click", closePinDisableModal);
+    $("#pin-disable-modal")?.addEventListener("click", (e)=>{ if(e.target.id==="pin-disable-modal") closePinDisableModal(); });
+    $("#pin-disable-confirm")?.addEventListener("click", async ()=>{
+      const pin = $("#pin-disable-input").value;
+      if(!pin || pin.length < pinMin){
+        const err = $("#pin-disable-error");
+        err.textContent = "Mínimo "+pinMin+" caracteres.";
+        err.classList.remove("hidden"); err.hidden = false;
+        return;
+      }
+      const ok = await Storage.disablePin(pin);
+      if(!ok){
+        const err = $("#pin-disable-error");
+        if(Storage.isLockedOut()) err.textContent = "Bloqueado por tentativas. Aguarde 30s.";
+        else err.textContent = "PIN incorreto. Tente novamente.";
+        err.classList.remove("hidden"); err.hidden = false;
         updatePinUI();
-        if(currentExamId) renderExam();
-      });
+        return;
+      }
+      cachedStates={};
+      if(currentExamId) await loadExamState(currentExamId);
+      closePinDisableModal();
+      updatePinUI();
+      if(currentExamId) renderExam();
+      showStorageError("Proteção por PIN desativada.");
     });
 
     $("#btn-quick-exit")?.addEventListener("click", triggerQuickExit);
@@ -658,6 +737,8 @@
     });
     document.addEventListener("keydown", (e)=>{
       if(e.key==="Escape"){
+        const pdm = $("#pin-disable-modal");
+        if(pdm && !pdm.classList.contains("hidden")){ closePinDisableModal(); return; }
         const m = $("#modal");
         if(!m.classList.contains("hidden")){ closeModal(); return; }
         const qv = $("#quick-exit-view");
@@ -671,6 +752,9 @@
         if(currentExamId && views.exam && !views.exam.classList.contains("hidden")){
           triggerQuickExit();
         }
+      }
+      if(e.key==="Enter" && $("#pin-disable-modal") && !$("#pin-disable-modal").classList.contains("hidden")){
+        $("#pin-disable-confirm").click();
       }
     });
 
