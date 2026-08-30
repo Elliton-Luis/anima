@@ -16,7 +16,7 @@ Conduzir o usuário por um exame de consciência estruturado, fiel à doutrina c
 - **Navegação serena** — avançar/voltar, saltar entre seções, progresso discreto (“3 de 12”), continuar de onde parou.
 - **Marcação discreta** — por pergunta: *— / Para refletir / Levar à Confissão*. Sem nota, sem ranking, sem streak.
 - **Anotações privadas opt-in** — desativadas por padrão, armazenadas só localmente, facilmente apagáveis, com aviso explícito. Campos com `autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"` para reduzir sincronização com nuvem de teclados de terceiros.
-- **Proteção local opcional por PIN** — desativada por padrão. Quando ativada, `anima:state:{exame}` é cifrado com Web Crypto API (PBKDF2 120k iterações + AES-GCM). Sem o PIN, leitura física do `localStorage` vê apenas texto cifrado. Se o usuário não configurar PIN, mantém texto puro com aviso explícito: “Suas notas não estão protegidas por senha neste dispositivo”.
+- **Proteção local opcional por PIN** — desativada por padrão. Quando ativada, `anima:state:{exame}` é cifrado com Web Crypto API (PBKDF2 **600k iterações SHA-256** + AES-GCM 256, envelope `{v:2, data: "iv.cipher"}`). Mínimo **6 caracteres** (frase forte recomendada), rate-limit 30s após 5 erros, auto-lock em 30s de `visibilitychange` + 5 min de inatividade. Sem o PIN, leitura física do `localStorage` vê apenas texto cifrado. Se o usuário não configurar PIN, mantém texto puro com aviso explícito: “Suas notas não estão protegidas por senha neste dispositivo”. **O PIN protege contra olhar por cima do ombro / acesso casual, não contra atacante forense com `pinSalt`+`pinCheck` extraídos e GPU para brute-force offline.**
 - **Preparação para a Confissão** — lembretes de arrependimento, propósito de emenda e penitência.
 - **Ato de Contrição** (PT/LA) + *Vinde Espírito Santo* e *Confiteor* em PT/LA, com alternância de idioma.
 - **Tema claro/escuro**, responsivo, acessível (semântico, foco visível, teclado, leitores de tela).
@@ -73,7 +73,7 @@ O app **deve ser servido via HTTPS**, mesmo em uso local/paroquial. Servir via H
 
 - HTML5, CSS3, JavaScript vanilla
 - LocalStorage (mínimo necessário — preferências não sensíveis + estado opt-in)
-- Web Crypto API — PBKDF2 + AES-GCM para cifra opcional de `anima:state:{exame}` quando PIN configurado
+- Web Crypto API — PBKDF2 600k SHA-256 + AES-GCM 256 com envelope versionado `{v,data}` para cifra opcional de `anima:state:{exame}` quando PIN configurado (auto-lock e fila de save)
 - PWA: `manifest.json` + Service Worker (`sw.js`)
 - Sem frameworks, sem backend, sem banco remoto.
 
@@ -87,7 +87,7 @@ O app **deve ser servido via HTTPS**, mesmo em uso local/paroquial. Servir via H
 | `anima:pinSalt` / `anima:pinCheck` | salt e verificação do PIN | não (metadado) | — |
 | `anima:state:{exame}` | marcações e notas por pergunta | **sim — apenas se o usuário ativar** | **sim, quando PIN ativo (AES-GCM)** |
 
-Nenhum dado sensível vai para URL, `console.log` ou cache do Service Worker. Todo `localStorage.setItem` está envolto em `try/catch`; em caso de `QuotaExceededError`, a UI mostra mensagem amigável sem nunca fazer `console.log(data)` ou `console.log(error)` com conteúdo da nota (ver `storage.js:15-22` e `app.js:showStorageError`). Teste manual: preencher nota muito longa até estourar cota → nada aparece no console com o conteúdo, usuário recebe feedback claro.
+Nenhum dado sensível vai para URL, `console.log` ou cache do Service Worker. Todo `localStorage.setItem` está envolto em `try/catch`; em caso de `QuotaExceededError`, a UI mostra mensagem amigável sem nunca fazer `console.log(data)` ou `console.log(error)` com conteúdo da nota (ver `storage.js:26-35` e `app.js:showStorageError`). Envelope `{"v":1|2,"data":...}` evita heurística frágil `raw.includes(".")`. `saveState` é enfileirado para evitar overwrites concorrentes. Teste manual: preencher nota muito longa até estourar cota → nada aparece no console com o conteúdo, usuário recebe feedback claro. `enablePin()` lança erro se `isPinEnabled()` já for true (use `changePin`).
 
 ## Como executar
 
@@ -129,7 +129,7 @@ npx serve .
 ```
 
 - `content.js` contém todo o conteúdo doutrinal offline — nenhum carregamento dinâmico de servidor.
-- `storage.js` centraliza acesso a `localStorage` com tratamento de falha e prefixo `anima:`; quando PIN ativo, cifra `anima:state:*` com AES-GCM.
+- `storage.js` centraliza acesso a `localStorage` com tratamento de falha e prefixo `anima:`; quando PIN ativo, cifra `anima:state:*` com AES-GCM via `getStateAsync()` única API (elimina `getState/getStateSync` com bug `_locked:true` quando desbloqueado); `listExamIds()` dinâmico evita lista hardcoded.
 - `app.js` não usa `innerHTML` com dados do usuário; usa `textContent`/`createElement` exclusivamente (verificado com `grep -rn "innerHTML" js/`).
 - `sw.js` faz cache **apenas** de assets estáticos listados em `ASSETS`; nunca de respostas dinâmicas com dado do usuário (comentário explícito em `sw.js:1-7` + lógica `shouldCache`).
 
@@ -149,9 +149,9 @@ Verificação manual: `sha256sum js/content.js sw.js` deve coincidir com acima. 
 ### O que o app protege
 - Nenhum dado do usuário é enviado à rede (CSP `connect-src 'none'`, sem fetch/XHR, sem CDN/analytics).
 - Sem `innerHTML` com dados do usuário → redução de XSS persistido.
-- `localStorage` isolado por prefixo `anima:`; wipe completo remove localStorage + Cache Storage.
-- PIN opcional cifra anotações em repouso contra leitura física do perfil do navegador.
-- Overlay de privacidade reduz exposição em miniaturas de multitarefa.
+- `localStorage` isolado por prefixo `anima:`; wipe completo `resetEverythingIncludingPin()` remove localStorage + Cache Storage (vs `resetContentOnly()` que mantém prefs/PIN).
+- PIN opcional (600k PBKDF2, ≥6 chars, envelope `v`, rate-limit, fila) cifra anotações em repouso contra leitura casual; **não** contra forense com GPU (ver aviso acima).
+- Overlay de privacidade + auto-lock 30s em background / 5 min inatividade reduz exposição em miniaturas e sessão aberta.
 - Saída rápida permite ocultar conteúdo instantaneamente.
 
 ### O que está fora do controle do app

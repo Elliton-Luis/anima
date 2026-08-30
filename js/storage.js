@@ -3,22 +3,27 @@
     Chaves:
       anima:prefs -> {theme, prayerLang}
       anima:progress -> {examId, sectionIndex}  (apenas posição, não respostas)
-      anima:state:{examId} -> {marks, notes}  (opt-in, local — texto puro ou AES-GCM se PIN ativo)
+      anima:state:{examId} -> envelope versionado {v, data} (v1 texto puro, v2 AES-GCM)
       anima:notesEnabled -> boolean
       anima:pinSalt -> base64 salt para PBKDF2 (se PIN configurado)
       anima:pinCheck -> verificação cifrada "anima-pin-check" (para validar PIN)
     Auditoria (Fase 2):
-      - Sensível (conteúdo do usuário): anima:state:{exame} (marcações + anotações)
-      - Não sensível (metadados): anima:prefs, anima:progress, anima:notesEnabled
-      Apenas anima:state:* é cifrado quando PIN está ativo. Metadados permanecem em claro por não conter conteúdo íntimo.
+      - Sensível: anima:state:{exame}
+      - Não sensível: anima:prefs, anima:progress, anima:notesEnabled
 */
 const Storage = (() => {
   const PREFIX = "anima:";
   const PIN_SALT_KEY = "pinSalt";
   const PIN_CHECK_KEY = "pinCheck";
   const PIN_CHECK_PLAINTEXT = "anima-pin-check";
-  let _cryptoKey = null; // CryptoKey em memória (sessão) quando desbloqueado
-  let _pinSaltB64 = null; // cache
+  const PBKDF2_ITERATIONS = 600000; // OWASP ≥600k para PBKDF2-HMAC-SHA256
+  const PIN_MIN_LEN = 6;
+  let _cryptoKey = null;
+  // rate-limit para brute-force offline mitigado parcialmente (sem persistência)
+  let _failedAttempts = 0;
+  let _lockoutUntil = 0;
+  // fila para evitar concorrência de saveState
+  let _saveQueue = Promise.resolve();
 
   const safe = {
     get(key){
@@ -26,7 +31,6 @@ const Storage = (() => {
     },
     set(key, val){
       try { localStorage.setItem(PREFIX+key, val); return true; } catch(e) {
-        // Propagar QuotaExceededError para UI sem expor conteúdo no console
         if(e && (e.name === "QuotaExceededError" || e.code === 22)){
           const q = new Error("QuotaExceededError");
           q.name = "QuotaExceededError";
@@ -40,7 +44,6 @@ const Storage = (() => {
     }
   };
 
-  // ---------- helpers base64 ----------
   function bufToB64(buf){
     const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
     let binary = "";
@@ -54,12 +57,11 @@ const Storage = (() => {
     return bytes;
   }
 
-  // ---------- WebCrypto PBKDF2 + AES-GCM ----------
   async function deriveKey(pin, saltBytes){
     const enc = new TextEncoder();
     const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveKey"]);
     return crypto.subtle.deriveKey(
-      {name:"PBKDF2", salt: saltBytes, iterations: 120000, hash:"SHA-256"},
+      {name:"PBKDF2", salt: saltBytes, iterations: PBKDF2_ITERATIONS, hash:"SHA-256"},
       keyMaterial,
       {name:"AES-GCM", length:256},
       false,
@@ -85,113 +87,191 @@ const Storage = (() => {
     if(!s) return null;
     try{ return b64ToBuf(s); }catch{return null;}
   }
-
+  function listExamIds(){
+    const ids=[];
+    try{
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        if(k && k.startsWith(PREFIX+"state:")) ids.push(k.slice((PREFIX+"state:").length));
+      }
+    }catch{}
+    return ids;
+  }
   function isPinEnabled(){
     return !!safe.get(PIN_SALT_KEY) && !!safe.get(PIN_CHECK_KEY);
   }
   function isUnlocked(){
     return _cryptoKey !== null;
   }
+  // rate-limit helpers
+  function isLockedOut(){
+    return Date.now() < _lockoutUntil;
+  }
+  function registerFailedAttempt(){
+    _failedAttempts++;
+    if(_failedAttempts >= 5){
+      _lockoutUntil = Date.now() + 30000; // 30s
+      _failedAttempts = 0;
+    }
+  }
+  function resetAttempts(){
+    _failedAttempts = 0;
+    _lockoutUntil = 0;
+  }
   async function verifyPin(pin){
+    if(isLockedOut()) return false;
     const salt = loadSalt();
     if(!salt) return false;
     try{
       const key = await deriveKey(pin, salt);
       const check = safe.get(PIN_CHECK_KEY);
       const dec = await decryptString(check, key);
-      return dec === PIN_CHECK_PLAINTEXT;
-    }catch{ return false; }
+      const ok = dec === PIN_CHECK_PLAINTEXT;
+      if(ok) resetAttempts(); else registerFailedAttempt();
+      return ok;
+    }catch{ registerFailedAttempt(); return false; }
   }
   async function unlockPin(pin){
+    if(isLockedOut()) return false;
     const salt = loadSalt();
     if(!salt) return false;
     try{
       const key = await deriveKey(pin, salt);
       const check = safe.get(PIN_CHECK_KEY);
       const dec = await decryptString(check, key);
-      if(dec !== PIN_CHECK_PLAINTEXT) return false;
+      if(dec !== PIN_CHECK_PLAINTEXT){ registerFailedAttempt(); return false; }
       _cryptoKey = key;
-      _pinSaltB64 = safe.get(PIN_SALT_KEY);
+      resetAttempts();
       return true;
-    }catch{ return false; }
+    }catch{ registerFailedAttempt(); return false; }
   }
   function lockPin(){
     _cryptoKey = null;
   }
   async function enablePin(pin){
-    if(!pin || pin.length < 4) throw new Error("PIN deve ter ao menos 4 caracteres");
+    if(isPinEnabled()) throw new Error("PIN já está ativo — use changePin()");
+    if(!pin || pin.length < PIN_MIN_LEN) throw new Error("PIN deve ter ao menos "+PIN_MIN_LEN+" caracteres (use frase forte)");
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const saltB64 = bufToB64(salt);
     const key = await deriveKey(pin, salt);
     const check = await encryptString(PIN_CHECK_PLAINTEXT, key);
-    // Re-cifrar todos os states existentes de texto puro para cifrado
-    const examIds = ["completo","rapido","diario"];
+    // migrar estados existentes com envelope versionado
+    const ids = listExamIds();
     const plainStates = {};
-    for(const id of examIds){
+    for(const id of ids){
       const raw = safe.get("state:"+id);
-      if(raw){
-        // tentar detectar se já é cifrado (contém "." e não é JSON válido com marks)
-        try{
-          const j = JSON.parse(raw);
-          if(j.marks !== undefined || j.notes !== undefined){
-            plainStates[id]=raw;
-          } else {
-            // pode ser cifrado legado? ignorar
-          }
-        }catch{
-          // se não é JSON, é cifrado legado — já cifrado, manter
+      if(!raw) continue;
+      // ler via envelope ou legado e recuperar objeto puro para recifrar
+      try{
+        const outer = JSON.parse(raw);
+        if(outer && outer.v === 2 && typeof outer.data === "string"){
+          // legado v2 mas ainda sem envelope? já cifrado, pular - será decifrado depois? aqui é enable, então só havia v1 legado
+          continue;
         }
+        if(outer && outer.v === 1 && outer.data){
+          plainStates[id] = JSON.stringify(outer.data);
+          continue;
+        }
+        if(outer && outer.marks !== undefined){
+          plainStates[id] = raw;
+          continue;
+        }
+      }catch{
+        // raw pode ser legado "iv.cipher" sem envelope — já cifrado (não deveria existir em enable)
+        continue;
       }
+    }
+    // também cobrir examIds conhecidos se não estavam em list (primeira vez)
+    for(const id of ["completo","rapido","diario"]){
+      if(plainStates[id]) continue;
+      const raw = safe.get("state:"+id);
+      if(!raw) continue;
+      try{
+        const outer = JSON.parse(raw);
+        if(outer && outer.marks !== undefined) plainStates[id]=raw;
+      }catch{}
     }
     safe.set(PIN_SALT_KEY, saltB64);
     safe.set(PIN_CHECK_KEY, check);
     _cryptoKey = key;
-    _pinSaltB64 = saltB64;
-    // recifra
     for(const [id, raw] of Object.entries(plainStates)){
       const enc = await encryptString(raw, key);
-      safe.set("state:"+id, enc);
+      safe.set("state:"+id, JSON.stringify({v:2, data: enc}));
     }
+    resetAttempts();
     return true;
   }
   async function disablePin(pin){
-    // requer PIN atual para descriptografar e voltar a texto puro
     const ok = await verifyPin(pin);
     if(!ok) return false;
-    // se ainda não desbloqueado, desbloqueia
     if(!_cryptoKey) await unlockPin(pin);
     const key = _cryptoKey;
-    const examIds = ["completo","rapido","diario"];
-    for(const id of examIds){
+    const ids = listExamIds();
+    for(const id of ids){
       const raw = safe.get("state:"+id);
-      if(raw){
-        try{
-          const dec = await decryptString(raw, key);
-          safe.set("state:"+id, dec);
-        }catch{
-          // se já é texto puro (JSON), mantém
+      if(!raw) continue;
+      try{
+        const outer = JSON.parse(raw);
+        if(outer && outer.v === 2 && typeof outer.data === "string"){
+          const dec = await decryptString(outer.data, key);
+          // dec é JSON string do estado
+          const obj = JSON.parse(dec);
+          safe.set("state:"+id, JSON.stringify({v:1, data: obj}));
+          continue;
         }
-      }
+        if(outer && outer.v === 1){
+          continue;
+        }
+        if(outer && outer.marks !== undefined){
+          // já texto puro legado
+          continue;
+        }
+        // legado "iv.cipher" sem envelope
+        if(typeof raw === "string" && raw.includes(".")){
+          try{
+            const dec = await decryptString(raw, key);
+            const obj = JSON.parse(dec);
+            safe.set("state:"+id, JSON.stringify({v:1, data: obj}));
+          }catch{}
+        }
+      }catch{}
     }
     safe.remove(PIN_SALT_KEY);
     safe.remove(PIN_CHECK_KEY);
     _cryptoKey = null;
-    _pinSaltB64 = null;
+    resetAttempts();
     return true;
   }
   async function changePin(oldPin, newPin){
+    if(!newPin || newPin.length < PIN_MIN_LEN) throw new Error("Novo PIN deve ter ao menos "+PIN_MIN_LEN+" caracteres");
     const ok = await verifyPin(oldPin);
     if(!ok) return false;
     await unlockPin(oldPin);
-    // descriptografa tudo com old key, gera novo salt/key e recifra
     const oldKey = _cryptoKey;
-    const examIds = ["completo","rapido","diario"];
+    const ids = listExamIds();
     const plains = {};
-    for(const id of examIds){
+    for(const id of ids){
       const raw = safe.get("state:"+id);
-      if(raw){
-        try{ plains[id] = await decryptString(raw, oldKey); }catch{ plains[id]=raw; }
-      }
+      if(!raw) continue;
+      try{
+        const outer = JSON.parse(raw);
+        if(outer && outer.v === 2 && typeof outer.data === "string"){
+          plains[id] = await decryptString(outer.data, oldKey);
+          continue;
+        }
+        if(outer && outer.v === 1 && outer.data){
+          plains[id] = JSON.stringify(outer.data);
+          continue;
+        }
+        if(outer && outer.marks !== undefined){
+          plains[id]=JSON.stringify(outer);
+          continue;
+        }
+        if(typeof raw === "string" && raw.includes(".")){
+          plains[id]=await decryptString(raw, oldKey);
+          continue;
+        }
+      }catch{ plains[id]=raw; }
     }
     const newSalt = crypto.getRandomValues(new Uint8Array(16));
     const newSaltB64 = bufToB64(newSalt);
@@ -200,11 +280,11 @@ const Storage = (() => {
     safe.set(PIN_SALT_KEY, newSaltB64);
     safe.set(PIN_CHECK_KEY, newCheck);
     _cryptoKey = newKey;
-    _pinSaltB64 = newSaltB64;
     for(const [id, plain] of Object.entries(plains)){
       const enc = await encryptString(plain, newKey);
-      safe.set("state:"+id, enc);
+      safe.set("state:"+id, JSON.stringify({v:2, data: enc}));
     }
+    resetAttempts();
     return true;
   }
 
@@ -221,7 +301,6 @@ const Storage = (() => {
     const next = {...cur, ...p};
     safe.set("prefs", JSON.stringify(next));
   }
-
   function getProgress(){
     try{
       const raw = safe.get("progress");
@@ -233,7 +312,6 @@ const Storage = (() => {
     safe.set("progress", JSON.stringify({examId, sectionIndex}));
   }
   function clearProgress(){ safe.remove("progress"); }
-
   function notesEnabled(){
     return safe.get("notesEnabled") === "1";
   }
@@ -242,105 +320,64 @@ const Storage = (() => {
     else safe.remove("notesEnabled");
   }
 
-  // state per exam: {marks: { "sectionId:qIndex": "none"|"reflect"|"confess", notes: { "sectionId:qIndex": string } }
-  // Suporte a estados cifrados: se PIN ativo, o valor em localStorage é "ivB64.cipherB64" (AES-GCM). Caso bloqueado, retorna {_locked:true}.
-  function getStateSync(examId){
-    try{
-      const raw = safe.get("state:"+examId);
-      if(!raw) return {marks:{}, notes:{}};
-      // se PIN ativo mas não desbloqueado -> sinalizar bloqueado
-      if(isPinEnabled() && !_cryptoKey){
-        return {marks:{}, notes:{}, _locked:true};
-      }
-      if(isPinEnabled() && _cryptoKey){
-        // não pode descriptografar de forma síncrona -> retornar locked; usar getStateAsync
-        return {marks:{}, notes:{}, _locked:true, _needsAsync:true};
-      }
-      const j = JSON.parse(raw);
-      return {marks: j.marks || {}, notes: j.notes || {}};
-    }catch{ return {marks:{}, notes:{}}; }
-  }
-  // Versão síncrona que tenta lidar com cifrado quando já desbloqueado de forma assíncrona não é possível;
-  // por isso mantemos getState como compatível: se cifrado e desbloqueado, tenta descriptografar síncrono via cache plain?
-  // Na prática, app.js usará getStateAsync quando PIN ativo.
-  function getState(examId){
-    // Compat: se PIN não ativo, comportamento clássico
-    if(!isPinEnabled()){
-      try{
-        const raw = safe.get("state:"+examId);
-        if(!raw) return {marks:{}, notes:{}};
-        const j = JSON.parse(raw);
-        return {marks: j.marks || {}, notes: j.notes || {}};
-      }catch{ return {marks:{}, notes:{}}; }
-    }
-    // PIN ativo mas ainda bloqueado
-    if(!_cryptoKey){
-      return {marks:{}, notes:{}, _locked:true};
-    }
-    // PIN ativo e desbloqueado — raw está cifrado, mas não podemos descriptografar síncrono; retornar cache se houver
-    // Para compat, tentamos descriptografar via operação síncrona não disponível, então retornamos vazio e o caller deve usar async
-    // Mantemos fallback: se o valor parece JSON (texto puro legado), retorna direto
-    try{
-      const raw = safe.get("state:"+examId);
-      if(!raw) return {marks:{}, notes:{}};
-      // se contém "." e não começa com "{", é cifrado -> precisa async
-      if(raw.includes(".") && !raw.trim().startsWith("{")){
-        return {marks:{}, notes:{}, _locked:false, _needsAsync:true};
-      }
-      const j = JSON.parse(raw);
-      return {marks: j.marks || {}, notes: j.notes || {}};
-    }catch{ return {marks:{}, notes:{}, _needsAsync:true}; }
-  }
+  // ÚNICA API pública de leitura — envelope versionado {v, data}
   async function getStateAsync(examId){
     try{
       const raw = safe.get("state:"+examId);
       if(!raw) return {marks:{}, notes:{}};
-      if(!isPinEnabled()){
-        const j = JSON.parse(raw);
-        return {marks: j.marks || {}, notes: j.notes || {}};
-      }
-      if(!_cryptoKey){
-        return {marks:{}, notes:{}, _locked:true};
-      }
-      // tentar descriptografar
-      try{
-        const dec = await decryptString(raw, _cryptoKey);
-        const j = JSON.parse(dec);
-        return {marks: j.marks || {}, notes: j.notes || {}};
-      }catch{
-        // pode ser texto puro (caso migração incompleta)
-        try{
-          const j = JSON.parse(raw);
-          return {marks: j.marks || {}, notes: j.notes || {}};
-        }catch{
-          return {marks:{}, notes:{}};
+      // tentar parse como envelope
+      let outer;
+      try{ outer = JSON.parse(raw); }catch{
+        // legado "iv.cipher" sem envelope
+        if(isPinEnabled()){
+          if(!_cryptoKey) return {marks:{}, notes:{}, _locked:true};
+          try{
+            const dec = await decryptString(raw, _cryptoKey);
+            const j = JSON.parse(dec);
+            return {marks: j.marks || {}, notes: j.notes || {}};
+          }catch{ return {marks:{}, notes:{}}; }
         }
+        return {marks:{}, notes:{}};
       }
+      if(outer && outer.v === 1 && outer.data){
+        return {marks: outer.data.marks || {}, notes: outer.data.notes || {}};
+      }
+      if(outer && outer.v === 2 && typeof outer.data === "string"){
+        if(!_cryptoKey) return {marks:{}, notes:{}, _locked:true};
+        try{
+          const dec = await decryptString(outer.data, _cryptoKey);
+          const j = JSON.parse(dec);
+          return {marks: j.marks || {}, notes: j.notes || {}};
+        }catch{ return {marks:{}, notes:{}}; }
+      }
+      // legado sem versão {marks, notes}
+      if(outer && outer.marks !== undefined){
+        // se PIN está ativo mas dado está em claro, precisa ser mantido (migração futura)
+        // se PIN ativo e desbloqueado, caller pode optar por recifrar no próximo save
+        return {marks: outer.marks || {}, notes: outer.notes || {}};
+      }
+      return {marks:{}, notes:{}};
     }catch{ return {marks:{}, notes:{}}; }
   }
+
   function saveState(examId, state){
-    if(!isPinEnabled()){
-      safe.set("state:"+examId, JSON.stringify(state));
-      return Promise.resolve(true);
-    }
-    if(!_cryptoKey){
-      // bloqueado: não permitir salvar cifrado sem chave — avisa que precisa desbloquear
-      // Para não perder dados, não salva (caller deve desbloquear)
-      return Promise.resolve(false);
-    }
-    // cifrar assíncrono — retornar Promise
-    return encryptString(JSON.stringify(state), _cryptoKey).then(enc=>{
-      safe.set("state:"+examId, enc);
+    // serializa via fila para evitar overwrites concorrentes
+    const task = async () => {
+      if(!isPinEnabled()){
+        safe.set("state:"+examId, JSON.stringify({v:1, data: state}));
+        return true;
+      }
+      if(!_cryptoKey){
+        return false;
+      }
+      const enc = await encryptString(JSON.stringify(state), _cryptoKey);
+      safe.set("state:"+examId, JSON.stringify({v:2, data: enc}));
       return true;
-    }).catch(()=>false);
-  }
-  // saveStateSync para callers que não aguardam (fallback)
-  function saveStateSync(examId, state){
-    if(!isPinEnabled()){
-      safe.set("state:"+examId, JSON.stringify(state));
-      return true;
-    }
-    return false;
+    };
+    const p = _saveQueue.then(task, task);
+    // atualizar fila sem deixar rejeição quebrar
+    _saveQueue = p.catch(()=>{});
+    return p;
   }
   function clearState(examId){
     safe.remove("state:"+examId);
@@ -355,12 +392,14 @@ const Storage = (() => {
       keys.forEach(k=>{ try{localStorage.removeItem(k);}catch{} });
     }catch{}
   }
-  function clearAll(){
+  // nomes explícitos para evitar confusão
+  function resetContentOnly(){
     clearProgress();
     clearAllStates();
     safe.remove("notesEnabled");
+    // mantém prefs e PIN intencionalmente
   }
-  function wipeEverything(){
+  function resetEverythingIncludingPin(){
     try{
       const keys=[];
       for(let i=0;i<localStorage.length;i++){
@@ -370,10 +409,13 @@ const Storage = (() => {
       keys.forEach(k=>{ try{localStorage.removeItem(k);}catch{} });
     }catch{}
     _cryptoKey=null;
-    _pinSaltB64=null;
+    resetAttempts();
   }
+  // alias compatíveis (deprecados)
+  const clearAll = resetContentOnly;
+  const wipeEverything = resetEverythingIncludingPin;
   async function wipeEverythingWithCaches(){
-    wipeEverything();
+    resetEverythingIncludingPin();
     try{
       if(typeof caches !== "undefined" && caches.keys){
         const keys = await caches.keys();
@@ -382,5 +424,5 @@ const Storage = (() => {
     }catch{}
   }
 
-  return {getPrefs, savePrefs, getProgress, saveProgress, clearProgress, notesEnabled, setNotesEnabled, getState, getStateSync, getStateAsync, saveState, saveStateSync, clearState, clearAllStates, clearAll, wipeEverything, wipeEverythingWithCaches, PREFIX, isPinEnabled, isUnlocked, verifyPin, unlockPin, lockPin, enablePin, disablePin, changePin, _cryptoKey: ()=>_cryptoKey};
+  return {getPrefs, savePrefs, getProgress, saveProgress, clearProgress, notesEnabled, setNotesEnabled, getStateAsync, saveState, clearState, clearAllStates, clearAll, resetContentOnly, wipeEverything, resetEverythingIncludingPin, wipeEverythingWithCaches, PREFIX, isPinEnabled, isUnlocked, verifyPin, unlockPin, lockPin, enablePin, disablePin, changePin, listExamIds, isLockedOut, PBKDF2_ITERATIONS, PIN_MIN_LEN, _cryptoKey: ()=>_cryptoKey};
 })();

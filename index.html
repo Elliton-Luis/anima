@@ -230,9 +230,9 @@
         <p class="pin-desc">Se ativar, suas marcações e anotações serão cifradas neste dispositivo com AES-GCM (chave derivada do seu PIN via PBKDF2). Sem o PIN, ninguém com acesso físico ao navegador lê o conteúdo em texto puro. Desativado por padrão — simples e sóbrio.</p>
         <p id="pin-status" class="pin-status" aria-live="polite"></p>
         <div id="pin-setup" class="pin-setup">
-          <label for="pin-input" class="pin-label">Definir PIN (mín. 4 caracteres)</label>
-          <input type="password" id="pin-input" class="pin-input" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="PIN">
-          <input type="password" id="pin-confirm" class="pin-input" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Confirmar PIN">
+          <label for="pin-input" class="pin-label">Definir PIN (mín. 6 caracteres — use frase forte)</label>
+          <input type="password" id="pin-input" class="pin-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="PIN (≥6)">
+          <input type="password" id="pin-confirm" class="pin-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Confirmar PIN">
           <button type="button" class="btn-primary btn-small" id="btn-enable-pin">Ativar proteção</button>
         </div>
         <div id="pin-unlock" class="pin-unlock hidden" hidden>

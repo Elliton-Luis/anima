@@ -9,9 +9,10 @@
   let currentExamId = null;
   let currentSection = 0;
   let pendingWipe = null;
-  // cache descriptografado em memória para evitar decrypt síncrono repetido
-  let cachedStates = {}; // examId -> {marks, notes}
+  let cachedStates = {};
   let isPinLocked = false;
+  let autoLockTimer = null;
+  let inactivityTimer = null;
 
   const views = {
     home: $("#view-home"),
@@ -35,8 +36,7 @@
     if(name==="about") updatePinUI();
   }
 
-  function showStorageError(){
-    // Mensagem amigável sem expor conteúdo no console
+  function showStorageError(msg){
     let el = $("#storage-error");
     if(!el){
       el = document.createElement("div");
@@ -45,10 +45,13 @@
       el.setAttribute("role","alert");
       document.body.appendChild(el);
     }
-    el.textContent = "Armazenamento cheio. Apague anotações antigas ou use “Apagar todos os meus dados”. Nenhum dado foi enviado.";
+    el.textContent = msg || "Armazenamento cheio. Apague anotações antigas ou use “Apagar todos os meus dados”. Nenhum dado foi enviado.";
     el.hidden = false;
     clearTimeout(el._tmr);
     el._tmr = setTimeout(()=>{ el.hidden=true; }, 6000);
+  }
+  function showPinBlockedMessage(){
+    showStorageError("Proteção por PIN bloqueada. Desbloqueie em Sobre antes de salvar.");
   }
 
   function safeSaveProgress(examId, sectionIndex){
@@ -116,9 +119,16 @@
   }
   function getCachedState(examId){
     if(cachedStates[examId]) return cachedStates[examId];
-    // fallback síncrono quando PIN não ativo
     if(!Storage.isPinEnabled()){
-      return Storage.getState(examId);
+      // leitura síncrona apenas para v1 (sem cifra) — única API síncrona permitida
+      try{
+        const raw = localStorage.getItem(Storage.PREFIX+"state:"+examId);
+        if(!raw) return {marks:{}, notes:{}};
+        const outer = JSON.parse(raw);
+        if(outer && outer.v === 1 && outer.data) return {marks: outer.data.marks||{}, notes: outer.data.notes||{}};
+        if(outer && outer.marks !== undefined) return {marks: outer.marks||{}, notes: outer.notes||{}};
+      }catch{}
+      return {marks:{}, notes:{}};
     }
     return {marks:{}, notes:{}, _locked:true};
   }
@@ -129,21 +139,12 @@
   }
   function setMark(examId, sectionId, qIndex, value){
     const st = getCachedState(examId);
-    if(st._locked) return;
+    if(st._locked){ showPinBlockedMessage(); return; }
     if(value==="none") delete st.marks[qKey(sectionId,qIndex)];
     else st.marks[qKey(sectionId,qIndex)] = value;
-    // persistir com tratamento de cota sem vazar conteúdo
     const p = Storage.saveState(examId, st);
-    if(p && p.catch) p.catch(e=>{ if(e&&e.name==="QuotaExceededError") showStorageError(); });
-    else {
-      // saveState retornou false quando bloqueado
-      if(p===false) showStorageError();
-    }
-    // captura de erro síncrono de QuotaExceededError
-    try{
-      // Storage.saveState já faz try interno, mas safe wrapper propaga
-    }catch(e){
-      if(e && e.name==="QuotaExceededError") showStorageError();
+    if(p && typeof p.then === "function"){
+      p.then(ok=>{ if(ok===false) showPinBlockedMessage(); }).catch(e=>{ if(e&&e.name==="QuotaExceededError") showStorageError(); else if(e) showPinBlockedMessage(); });
     }
   }
   function getNote(examId, sectionId, qIndex){
@@ -153,24 +154,19 @@
   }
   function setNote(examId, sectionId, qIndex, text){
     const st = getCachedState(examId);
-    if(st._locked) return;
+    if(st._locked){ showPinBlockedMessage(); return; }
     const t = (text||"").slice(0,2000);
     if(!t) delete st.notes[qKey(sectionId,qIndex)];
     else st.notes[qKey(sectionId,qIndex)] = t;
     const p = Storage.saveState(examId, st);
     if(p && typeof p.then==="function"){
-      p.then(ok=>{
-        if(ok===false) showStorageError();
-      }).catch(e=>{
-        if(e && e.name==="QuotaExceededError") showStorageError();
-      });
+      p.then(ok=>{ if(ok===false) showPinBlockedMessage(); }).catch(e=>{ if(e && e.name==="QuotaExceededError") showStorageError(); });
     }
   }
 
   async function renderExam(){
     const exam = getExam(currentExamId);
     if(!exam) return;
-    // garantir estado carregado (descriptografado)
     await loadExamState(currentExamId);
     const stLocked = getCachedState(currentExamId)._locked;
     const section = exam.sections[currentSection];
@@ -267,7 +263,6 @@
         ta.id = tid;
         ta.placeholder = "Escreva apenas se desejar lembrar algo para a Confissão...";
         ta.maxLength = 2000;
-        // Fase 2: reduzir vazamento por teclados de terceiros
         ta.setAttribute("autocomplete","off");
         ta.setAttribute("autocorrect","off");
         ta.setAttribute("autocapitalize","off");
@@ -333,7 +328,6 @@
     await loadExamState(currentExamId);
     const st = getCachedState(currentExamId);
     if(st._locked){
-      // não mostrar conteúdo bloqueado
       $("#conclusion-marked").classList.add("hidden");
       $("#conclusion-marked").hidden = true;
       showView("conclusion");
@@ -449,8 +443,8 @@
     renderExam();
   }
   async function wipeAll(){
-    // Fase 2: apagar localStorage + Cache Storage
     if(Storage.wipeEverythingWithCaches) await Storage.wipeEverythingWithCaches();
+    else if(Storage.resetEverythingIncludingPin) await Storage.resetEverythingIncludingPin();
     else Storage.wipeEverything();
     cachedStates = {};
     currentExamId = null;
@@ -462,7 +456,6 @@
     updateHomeContinue();
   }
 
-  // PIN UI
   function updatePinUI(){
     const status = $("#pin-status");
     const setup = $("#pin-setup");
@@ -475,7 +468,8 @@
       unlock.classList.add("hidden"); unlock.hidden=true;
       manage.classList.add("hidden"); manage.hidden=true;
     } else if(!Storage.isUnlocked()){
-      status.textContent = "Ativado — bloqueado. Digite o PIN para desbloquear nesta sessão.";
+      if(Storage.isLockedOut()) status.textContent = "Bloqueado por tentativas — aguarde 30s.";
+      else status.textContent = "Ativado — bloqueado. Digite o PIN para desbloquear nesta sessão.";
       setup.classList.add("hidden"); setup.hidden=true;
       unlock.classList.remove("hidden"); unlock.hidden=false;
       manage.classList.add("hidden"); manage.hidden=true;
@@ -488,16 +482,12 @@
     updatePinHint();
   }
 
-  // Saída rápida
   function triggerQuickExit(){
     const qv = $("#quick-exit-view");
     qv.classList.remove("hidden");
     qv.hidden = false;
     qv.setAttribute("aria-hidden","false");
-    // limpar conteúdo sensível visível
     window.scrollTo(0,0);
-    // opcional: limpar estados visíveis sem apagar dados (só ocultar)
-    // Pausa: não apaga, apenas mostra tela neutra
   }
   function closeQuickExit(){
     const qv = $("#quick-exit-view");
@@ -505,6 +495,15 @@
     qv.hidden = true;
     qv.setAttribute("aria-hidden","true");
     showView("home");
+  }
+
+  function resetInactivityTimer(){
+    clearTimeout(inactivityTimer);
+    if(!Storage.isPinEnabled() || !Storage.isUnlocked()) return;
+    inactivityTimer = setTimeout(()=>{
+      Storage.lockPin(); cachedStates={}; updatePinUI(); if(currentExamId) renderExam();
+      showStorageError("Sessão bloqueada por inatividade (5 min).");
+    }, 5*60*1000);
   }
 
   function bind(){
@@ -573,7 +572,7 @@
     $("#btn-print-marked").addEventListener("click", ()=> window.print());
 
     const wipeHandler = ()=>{
-      openModal("Apagar todos os meus dados?", "Isso removerá permanentemente todas as marcações, anotações, progresso e cache offline deste dispositivo. Esta ação não pode ser desfeita. Cache do Service Worker também será limpo (verificado via caches.keys()).", "Apagar tudo", async ()=>{
+      openModal("Apagar todos os meus dados?", "Isso removerá permanentemente todas as marcações, anotações, progresso e cache offline deste dispositivo, INCLUINDO o PIN. Esta ação não pode ser desfeita. Cache do Service Worker também será limpo (verificado via caches.keys()).", "Apagar tudo", async ()=>{
         await wipeAll();
         closeModal();
       });
@@ -586,11 +585,11 @@
       b.addEventListener("click", ()=> setPrayerLang(b.dataset.lang));
     });
 
-    // PIN
+    const pinMin = Storage.PIN_MIN_LEN || 6;
     $("#btn-enable-pin")?.addEventListener("click", async ()=>{
       const pin = $("#pin-input").value.trim();
       const conf = $("#pin-confirm").value.trim();
-      if(pin.length < 4){ openModal("PIN inválido","O PIN deve ter ao menos 4 caracteres.","OK", closeModal); return; }
+      if(pin.length < pinMin){ openModal("PIN inválido","O PIN deve ter ao menos "+pinMin+" caracteres. Use frase forte, não só 4 dígitos.","OK", closeModal); return; }
       if(pin !== conf){ openModal("PIN não confere","A confirmação não coincide.","OK", closeModal); return; }
       try{
         await Storage.enablePin(pin);
@@ -599,31 +598,43 @@
         $("#pin-input").value=""; $("#pin-confirm").value="";
         updatePinUI();
         if(currentExamId) renderExam();
+        resetInactivityTimer();
       }catch(e){
-        openModal("Erro","Não foi possível ativar o PIN.","OK", closeModal);
+        const msg = e && e.message ? e.message : "Não foi possível ativar o PIN.";
+        openModal("Erro", msg, "OK", closeModal);
       }
     });
     $("#btn-unlock-pin")?.addEventListener("click", async ()=>{
+      if(Storage.isLockedOut()){ openModal("Bloqueado","Muitas tentativas. Aguarde 30s.","OK", closeModal); updatePinUI(); return; }
       const pin = $("#pin-unlock-input").value.trim();
       const ok = await Storage.unlockPin(pin);
-      if(!ok){ openModal("PIN incorreto","Tente novamente.","OK", closeModal); return; }
+      if(!ok){
+        if(Storage.isLockedOut()) openModal("Bloqueado","Muitas tentativas. Aguarde 30s.","OK", closeModal);
+        else openModal("PIN incorreto","Tente novamente.","OK", closeModal);
+        updatePinUI();
+        return;
+      }
       cachedStates = {};
       if(currentExamId) await loadExamState(currentExamId);
       $("#pin-unlock-input").value="";
       updatePinUI();
       if(currentExamId) renderExam();
       else if(views.exam && !views.exam.classList.contains("hidden")) renderExam();
+      resetInactivityTimer();
     });
     $("#btn-lock-pin")?.addEventListener("click", ()=>{
       Storage.lockPin(); cachedStates={}; updatePinUI(); if(currentExamId) renderExam();
+      clearTimeout(autoLockTimer); clearTimeout(inactivityTimer);
     });
     $("#btn-lock-pin2")?.addEventListener("click", ()=>{
       Storage.lockPin(); cachedStates={}; updatePinUI(); if(currentExamId) renderExam();
+      clearTimeout(autoLockTimer); clearTimeout(inactivityTimer);
     });
     $("#btn-disable-pin")?.addEventListener("click", ()=>{
       openModal("Desativar proteção?", "Digite seu PIN atual para descriptografar e remover a proteção. Se esquecer o PIN, será preciso apagar os dados.", "Desativar", async ()=>{
         const pin = prompt("Digite seu PIN atual:");
         if(pin===null){ closeModal(); return; }
+        if(pin.trim().length < pinMin){ closeModal(); openModal("PIN inválido","Mínimo "+pinMin+" caracteres.","OK", closeModal); return; }
         const ok = await Storage.disablePin(pin.trim());
         if(!ok){ closeModal(); openModal("PIN incorreto","Não foi possível desativar.","OK", closeModal); return; }
         cachedStates={};
@@ -634,7 +645,6 @@
       });
     });
 
-    // quick exit
     $("#btn-quick-exit")?.addEventListener("click", triggerQuickExit);
     $("#btn-quick-exit-back")?.addEventListener("click", closeQuickExit);
 
@@ -648,7 +658,6 @@
     });
     document.addEventListener("keydown", (e)=>{
       if(e.key==="Escape"){
-        // saída rápida com Esc duplo? Primeiro fecha modals, segundo faz quick exit
         const m = $("#modal");
         if(!m.classList.contains("hidden")){ closeModal(); return; }
         const qv = $("#quick-exit-view");
@@ -659,24 +668,35 @@
           $("#btn-exam-sections").setAttribute("aria-expanded","false");
           return;
         }
-        // Se estiver no exame, Esc faz saída rápida
         if(currentExamId && views.exam && !views.exam.classList.contains("hidden")){
           triggerQuickExit();
         }
       }
     });
 
-    // Fase 3: overlay quando página fica oculta (reduz miniatura multitarefa)
     document.addEventListener("visibilitychange", ()=>{
       const ov = $("#privacy-overlay");
       if(!ov) return;
       if(document.hidden){
         ov.classList.remove("hidden");
         ov.hidden=false;
+        clearTimeout(autoLockTimer);
+        if(Storage.isPinEnabled() && Storage.isUnlocked()){
+          autoLockTimer = setTimeout(()=>{
+            Storage.lockPin(); cachedStates={}; updatePinUI(); if(currentExamId) renderExam();
+          }, 30000);
+        }
       } else {
         ov.classList.add("hidden");
         ov.hidden=true;
+        clearTimeout(autoLockTimer);
+        if(Storage.isUnlocked()) resetInactivityTimer();
       }
+    });
+
+    // auto-lock por inatividade 5 min
+    ["click","keydown","mousemove","touchstart"].forEach(ev=>{
+      document.addEventListener(ev, resetInactivityTimer, {passive:true});
     });
 
     window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ()=>{
@@ -691,7 +711,7 @@
     updatePinUI();
     updatePinHint();
     showView("home");
-    // Se PIN ativo e bloqueado, não carregar estados até desbloquear
+    resetInactivityTimer();
     if("serviceWorker" in navigator){
       navigator.serviceWorker.register("sw.js").catch(()=>{});
     }
