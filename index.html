@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Exame de Consciência católico — instrumento privado e offline para preparação à Confissão.">
 <meta name="theme-color" content="#1c1e26">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'">
 <meta name="referrer" content="no-referrer">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/icons/icon-192.png" type="image/png">
@@ -127,6 +127,7 @@
         <input type="checkbox" id="toggle-notes">
         <span>Permitir anotações privadas <small>(desativado por padrão — fica só neste dispositivo)</small></span>
       </label>
+      <p id="notes-pin-hint" class="pin-hint" aria-live="polite">Suas notas não estão protegidas por senha neste dispositivo.</p>
       <button type="button" class="btn-ghost btn-small btn-danger" id="btn-clear-exam">Apagar marcações deste exame</button>
     </div>
   </section>
@@ -223,6 +224,34 @@
       <div class="about-actions">
         <button type="button" class="btn-ghost btn-danger" id="btn-wipe-all-about">Apagar todos os meus dados</button>
       </div>
+      <!-- PIN / cifra local opcional -->
+      <div class="pin-card" id="pin-card">
+        <h3>Proteção local opcional (PIN)</h3>
+        <p class="pin-desc">Se ativar, suas marcações e anotações serão cifradas neste dispositivo com AES-GCM (chave derivada do seu PIN via PBKDF2). Sem o PIN, ninguém com acesso físico ao navegador lê o conteúdo em texto puro. Desativado por padrão — simples e sóbrio.</p>
+        <p id="pin-status" class="pin-status" aria-live="polite"></p>
+        <div id="pin-setup" class="pin-setup">
+          <label for="pin-input" class="pin-label">Definir PIN (mín. 4 caracteres)</label>
+          <input type="password" id="pin-input" class="pin-input" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="PIN">
+          <input type="password" id="pin-confirm" class="pin-input" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Confirmar PIN">
+          <button type="button" class="btn-primary btn-small" id="btn-enable-pin">Ativar proteção</button>
+        </div>
+        <div id="pin-unlock" class="pin-unlock hidden" hidden>
+          <label for="pin-unlock-input" class="pin-label">Desbloquear</label>
+          <input type="password" id="pin-unlock-input" class="pin-input" inputmode="numeric" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Digite seu PIN">
+          <div class="pin-actions">
+            <button type="button" class="btn-primary btn-small" id="btn-unlock-pin">Desbloquear</button>
+            <button type="button" class="btn-ghost btn-small" id="btn-lock-pin">Bloquear</button>
+          </div>
+        </div>
+        <div id="pin-manage" class="pin-manage hidden" hidden>
+          <p class="pin-hint">Cifrado e desbloqueado nesta sessão.</p>
+          <div class="pin-actions">
+            <button type="button" class="btn-ghost btn-small" id="btn-lock-pin2">Bloquear</button>
+            <button type="button" class="btn-ghost btn-small btn-danger" id="btn-disable-pin">Desativar proteção (requer PIN)</button>
+          </div>
+        </div>
+        <p class="pin-warn">Atenção: se esquecer o PIN, não há recuperação — será preciso apagar os dados cifrados.</p>
+      </div>
       <p class="about-version">Versão local — sem coleta de dados.</p>
     </div>
   </section>
@@ -233,6 +262,21 @@
   <p>Feito para oração. Sem rastreamento. Sem conta. Offline.</p>
   <p><button type="button" class="link-btn" id="btn-footer-about">Privacidade e sobre</button> · <button type="button" class="link-btn" id="btn-footer-wipe">Apagar todos os meus dados</button></p>
 </footer>
+
+<!-- Overlay de privacidade (visibilitychange) -->
+<div id="privacy-overlay" class="privacy-overlay hidden" hidden aria-hidden="true">
+  <div class="privacy-overlay-card">
+    <p class="privacy-overlay-icon" aria-hidden="true">✠</p>
+    <p class="privacy-overlay-text">Conteúdo oculto — volte à janela para continuar</p>
+  </div>
+</div>
+
+<!-- Saída rápida -->
+<button type="button" id="btn-quick-exit" class="quick-exit" aria-label="Saída rápida — ir para tela neutra" title="Saída rápida (Esc)">✕ Saída rápida</button>
+<div id="quick-exit-view" class="quick-exit-view hidden" hidden aria-hidden="true">
+  <p>Exame de Consciência — tela neutra</p>
+  <button type="button" class="btn-ghost" id="btn-quick-exit-back">Voltar ao início</button>
+</div>
 
 <!-- Modal confirmação -->
 <div id="modal" class="modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">

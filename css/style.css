@@ -340,6 +340,29 @@ a{color:var(--accent)}
 .modal-body{margin:0 0 16px; color:var(--muted); font-size:14px; line-height:1.6}
 .modal-actions{display:flex; justify-content:flex-end; gap:8px}
 
+/* privacidade: overlay visibilitychange + pin + quick-exit */
+.pin-hint{font-family: system-ui, sans-serif; font-size:12px; color:var(--muted-2); margin:4px 0 0}
+.pin-card{margin-top:20px; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); box-shadow:var(--shadow)}
+.pin-card h3{font-size:14px; margin:0 0 8px; font-family: system-ui, sans-serif; color:var(--accent)}
+.pin-desc{font-family: system-ui, sans-serif; font-size:12px; color:var(--muted); margin:0 0 10px; line-height:1.6}
+.pin-status{font-family: system-ui, sans-serif; font-size:13px; font-weight:600; margin:8px 0; color:var(--text)}
+.pin-label{font-family: system-ui, sans-serif; font-size:12px; color:var(--muted); display:block; margin:8px 0 4px}
+.pin-input{width:100%; max-width:280px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--card); color:var(--text); font-family: system-ui, sans-serif; font-size:14px; margin-bottom:6px; display:block}
+.pin-setup, .pin-unlock, .pin-manage{margin-top:10px}
+.pin-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+.pin-warn{font-family: system-ui, sans-serif; font-size:11px; color:var(--danger); margin:10px 0 0; line-height:1.5}
+.privacy-overlay{position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:60; backdrop-filter:blur(12px)}
+.privacy-overlay.hidden{display:none !important}
+.privacy-overlay-card{text-align:center; padding:32px 20px}
+.privacy-overlay-icon{font-size:48px; color:var(--accent); margin:0}
+.privacy-overlay-text{font-family: system-ui, sans-serif; font-size:14px; color:var(--muted); margin:12px 0 0}
+.quick-exit{position:fixed; bottom:16px; right:16px; z-index:40; padding:10px 14px; border-radius:999px; border:1px solid var(--danger); background:var(--card); color:var(--danger); font-family: system-ui, sans-serif; font-size:12px; cursor:pointer; box-shadow:var(--shadow)}
+.quick-exit:hover{background:rgba(139,58,46,.08)}
+.quick-exit-view{position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:70; text-align:center; padding:20px}
+.quick-exit-view.hidden{display:none !important}
+.quick-exit-view p{font-size:18px; color:var(--muted); margin:0 0 16px}
+.storage-error{position:fixed; bottom:70px; left:50%; transform:translateX(-50%); background:var(--danger); color:#fff; padding:12px 18px; border-radius:10px; font-family: system-ui, sans-serif; font-size:13px; z-index:55; max-width:90%; text-align:center; box-shadow:0 4px 16px rgba(0,0,0,.3)}
+
 .hidden{display:none !important}
 
 /* print: hide chrome when printing marked list */

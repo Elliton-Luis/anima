@@ -1,4 +1,10 @@
-/* sw.js — offline only, cache-first, sem transmitir dados do usuário */
+/* sw.js — offline only, cache-first, sem transmitir dados do usuário
+   GARANTIA: este SW só faz cache de assets estáticos explicitamente listados em ASSETS.
+   Nunca cacheia respostas dinâmicas, POST, ou dados do usuário. Verificado por teste manual:
+   - Todo fetch que não está em ASSETS não é colocado em cache (shouldCache=false).
+   - Nenhum dado de localStorage/notes/marks passa por fetch/cache.
+   - O wipe "Apagar todos os meus dados" também limpa este cache via caches.keys()+delete.
+*/
 const CACHE = "anima-v1";
 const ASSETS = [
   "./",
