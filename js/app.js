@@ -623,25 +623,76 @@
         showView("home");
       });
     });
-    function updatePrintHeader(){
-      const el = $("#print-header");
-      if(!el) return;
-      const d = new Date();
-      const fmt = d.toLocaleDateString("pt-BR", {day:"2-digit", month:"long", year:"numeric"});
-      el.textContent = fmt + " — confidencial · apenas para a confissão";
-      el.style.display = "block";
-      const foot = $("#print-footer");
-      if(foot) foot.style.display = "block";
+    function buildPrintConfession(){
+      const body = $("#print-confession-body");
+      const dateEl = $("#print-confession-date");
+      if(!body) return;
+      const exam = getExam(currentExamId);
+      if(dateEl){
+        const d = new Date();
+        dateEl.textContent = d.toLocaleDateString("pt-BR", {day:"2-digit", month:"long", year:"numeric"}) + " — confidencial";
+      }
+      body.textContent = "";
+      if(!exam){
+        const p = document.createElement("p");
+        p.className = "print-empty";
+        p.textContent = "Nenhum exame selecionado.";
+        body.appendChild(p);
+        return;
+      }
+      const st = getCachedState(currentExamId);
+      if(st._locked){
+        const p = document.createElement("p");
+        p.className = "print-empty";
+        p.textContent = "Desbloqueie com seu PIN para gerar o PDF.";
+        body.appendChild(p);
+        return;
+      }
+      // agrupa por seção para layout organizado
+      let hasAny = false;
+      exam.sections.forEach(sec=>{
+        const items = [];
+        sec.questions.forEach((q, idx)=>{
+          const k = qKey(sec.id, idx);
+          if(st.marks[k]==="confess") items.push({text:q, note: st.notes[k]||""});
+        });
+        if(items.length===0) return;
+        hasAny = true;
+        const secDiv = document.createElement("section");
+        secDiv.className = "print-section";
+        const h = document.createElement("h2");
+        h.className = "print-section-title";
+        h.textContent = sec.title;
+        secDiv.appendChild(h);
+        const ul = document.createElement("ul");
+        ul.className = "print-list";
+        items.forEach(it=>{
+          const li = document.createElement("li");
+          li.className = "print-item";
+          li.textContent = it.text;
+          if(it.note){
+            const n = document.createElement("span");
+            n.className = "print-item-note";
+            n.textContent = "Nota: " + it.note.slice(0,500);
+            li.appendChild(n);
+          }
+          ul.appendChild(li);
+        });
+        secDiv.appendChild(ul);
+        body.appendChild(secDiv);
+      });
+      if(!hasAny){
+        const p = document.createElement("p");
+        p.className = "print-empty";
+        p.textContent = "Nenhum item marcado como 'Levar à Confissão'. Marque os itens no exame para gerar seu roteiro.";
+        body.appendChild(p);
+      }
     }
-    $("#btn-print-marked").addEventListener("click", ()=>{
-      updatePrintHeader();
-      // garante que a view de conclusão está visível para impressão
+    $("#btn-print-marked").addEventListener("click", async ()=>{
+      // garante estado mais recente (descriptografado)
+      if(currentExamId) await loadExamState(currentExamId);
+      buildPrintConfession();
       setTimeout(()=> window.print(), 50);
-    });
-    // after print, hide again (screen)
-    window.addEventListener("afterprint", ()=>{
-      const h = $("#print-header"); if(h) h.style.display="none";
-      const f = $("#print-footer"); if(f) f.style.display="none";
     });
     $("#btn-finish-from-prayers")?.addEventListener("click", ()=>{
       openModal("Finalizar exame?", "O progresso será limpo e você voltará ao início. Use 'Imprimir' na tela anterior se precisar do PDF para a confissão.", "Finalizar", async ()=>{

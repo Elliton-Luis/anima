@@ -288,6 +288,23 @@
   <button type="button" class="btn-ghost" id="btn-quick-exit-back">Voltar ao início</button>
 </div>
 
+<!-- Layout dedicado para PDF/impressão — só pecados, limpo e legível -->
+<div id="print-confession" class="print-confession" hidden aria-hidden="true">
+  <div class="print-confession-inner">
+    <header class="print-confession-header">
+      <p class="print-confession-kicker">Para a Confissão</p>
+      <h1>Exame de Consciência</h1>
+      <p id="print-confession-date" class="print-confession-date"></p>
+      <p class="print-confession-subtitle">Itens que você marcou para levar à Confissão — seja breve e claro.</p>
+    </header>
+    <div id="print-confession-body"></div>
+    <footer class="print-confession-footer">
+      <p>Leve apenas o necessário ao confessor. Seja breve, claro e sem detalhes desnecessários.</p>
+      <p class="print-confession-warn">Este papel é confidencial — destrua após a confissão.</p>
+    </footer>
+  </div>
+</div>
+
 <!-- Modal desativar PIN (substitui prompt) -->
 <div id="pin-disable-modal" class="modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="pin-disable-title">
   <div class="modal-card">
