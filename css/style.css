@@ -380,8 +380,11 @@ a{color:var(--accent)}
 @media print{
   @page{ margin:16mm 13mm; size:A4 }
   html, body{background:#fff !important; color:#000 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
-  body > header, body > main, body > footer, #privacy-overlay, #quick-exit, #quick-exit-view, .modal, #pin-disable-modal{display:none !important}
-  #print-confession{display:block !important; position:static !important; margin:0 !important; padding:0 !important}
+  /* esconde TUDO da tela e mostra só o container dedicado — garante que conclusão/preparação e quick-exit NUNCA vão para o PDF */
+  body *{visibility:hidden !important}
+  #print-confession, #print-confession *{visibility:visible !important}
+  #print-confession{display:block !important; position:absolute !important; left:0 !important; top:0 !important; width:100% !important; margin:0 !important; padding:0 13mm !important; box-sizing:border-box !important}
+  #print-confession[hidden]{display:block !important}
   .print-confession-inner{max-width:100% !important; margin:0 auto !important; font-family:Georgia, "Times New Roman", serif; color:#000}
   .print-confession-header{text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:14px}
   .print-confession-kicker{font-family:system-ui, sans-serif; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:#555; margin:0 0 4px}
@@ -397,8 +400,6 @@ a{color:var(--accent)}
   .print-empty{font-family:system-ui, sans-serif; font-size:12px; color:#555; text-align:center; font-style:italic; padding:14px; border:1px dashed #bbb; border-radius:6px}
   .print-confession-footer{margin-top:16px; border-top:1px solid #ccc; padding-top:8px; text-align:center; font-family:system-ui, sans-serif; font-size:9px; color:#666; font-style:italic}
   .print-confession-warn{font-size:8px; color:#888; margin-top:4px}
-  /* garante que quick-exit e overlay nunca imprimam */
-  .quick-exit, .privacy-overlay, .storage-error{display:none !important}
 }
 
 /* large screens: slightly wider, but keep reading width */
